@@ -6,6 +6,7 @@
 #include "main.h"
 #include <libcaer/events/polarity.h>
 
+// Flow event struct is only for in-between processing - not actually maintained.
 struct flow_event {
 	uint16_t x,y;
 	int64_t timestamp;
@@ -16,11 +17,11 @@ struct flow_event {
 
 typedef struct flow_event *FlowEvent;
 
+// Extends caerPolarityEventPacket by adding flow data
 struct flow_event_packet {
-	/// The common event packet header.
-	struct caer_event_packet_header packetHeader;
-	/// The events array.
-	struct flow_event* events;
+	caerPolarityEventPacket polarity;
+	double * u;
+	double * v;
 }__attribute__((__packed__));
 
 typedef struct flow_event_packet *FlowEventPacket;
@@ -30,7 +31,7 @@ struct flow_event_buffer {
 	size_t sizeX;
 	size_t sizeY;
 	size_t size;
-};
+}__attribute__((__packed__));
 
 typedef struct flow_event_buffer *FlowEventBuffer;
 
@@ -55,19 +56,39 @@ static inline struct flow_event flowEventInitFromPolarity(caerPolarityEvent pola
 }
 
 static inline FlowEventPacket flowEventPacketInitFromPolarity(caerPolarityEventPacket polarity) {
+	if (polarity == NULL) {
+			return NULL;
+		}
 	if (polarity->packetHeader.eventNumber == 0) {
 		return NULL;
 	}
-	FlowEventPacket flow = malloc(sizeof(FlowEventPacket));
-	uint64_t eventNumber = (uint64_t) polarity->packetHeader.eventNumber;
-	flow->packetHeader = polarity->packetHeader; //take same specs of packets
-	flow->events = malloc(eventNumber * sizeof(struct flow_event));
-	uint64_t i;
-	for (i=0; i < eventNumber; i++) {
-		caerPolarityEvent p = caerPolarityEventPacketGetEvent(polarity,i);
-		flow->events[i] = flowEventInitFromPolarity(p, polarity);
-	}
+	FlowEventPacket flow = malloc(sizeof(struct flow_event_packet));
+	flow->polarity = polarity; // copy only pointer to save computations
+	size_t length = (size_t) polarity->packetHeader.eventNumber;
+	flow->u = calloc(length,sizeof(double));
+	flow->v = calloc(length,sizeof(double));
 	return (flow);
+}
+
+// Update FlowEventPacket, adding flow vector values if found
+static inline void flowEventPacketUpdate(FlowEventPacket flow, FlowEvent e, int i) {
+	if (caerPolarityEventIsValid(&flow->polarity->events[i])) {
+		if (e->hasFlow) {
+			flow->u[i] = e->u;
+			flow->v[i] = e->v;
+		}
+		else {
+			caerPolarityEventInvalidate(&flow->polarity->events[i], flow->polarity);
+		}
+	}
+}
+
+static inline void flowEventPacketFree(FlowEventPacket flow) {
+	if (flow != NULL) {
+		free(flow->u);
+		free(flow->v);
+		free(flow);
+	}
 }
 
 static inline FlowEventBuffer flowEventBufferInit(size_t width, size_t height, size_t size) {
@@ -91,7 +112,7 @@ static inline FlowEventBuffer flowEventBufferInit(size_t width, size_t height, s
 }
 
 static inline void flowEventBufferAdd(struct flow_event e, FlowEventBuffer buffer) {
-	// TODO make buffer more efficient for larger buffer size
+	// TODO make buffer update more efficient for larger buffer size
 	size_t i;
 	for (i = buffer->size-1; i > 0 ; i--) {
 		buffer->buffer[e.x][e.y][i] = buffer->buffer[e.x][e.y][i-1];

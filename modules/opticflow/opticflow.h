@@ -11,7 +11,8 @@
 #include "main.h"
 
 #include <libcaer/events/polarity.h>
+#include "flowEvent.h"
 
-void caerOpticFlowFilter(uint16_t moduleID, caerPolarityEventPacket polarity);
+void caerOpticFlowFilter(uint16_t moduleID, FlowEventPacket polarity);
 
 #endif /* OPTICFLOW_H_ */

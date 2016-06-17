@@ -11,7 +11,6 @@
 #include "base/mainloop.h"
 #include "base/module.h"
 #include "ext/buffers.h"
-#include "flowEvent.h"
 #include "flowBenosman2014.h"
 
 #define FLOW_BUFFER_SIZE 3
@@ -34,13 +33,13 @@ static struct caer_module_functions caerOpticFlowFilterFunctions = { .moduleInit
 	&caerOpticFlowFilterInit, .moduleRun = &caerOpticFlowFilterRun, .moduleConfig =
 	&caerOpticFlowFilterConfig, .moduleExit = &caerOpticFlowFilterExit };
 
-void caerOpticFlowFilter(uint16_t moduleID, caerPolarityEventPacket polarity) {
+void caerOpticFlowFilter(uint16_t moduleID, FlowEventPacket flow) {
 	caerModuleData moduleData = caerMainloopFindModule(moduleID, "OpticFlow");
 	if (moduleData == NULL) {
 		return;
 	}
 
-	caerModuleSM(&caerOpticFlowFilterFunctions, moduleData, sizeof(struct OpticFlowFilter_state), 1, polarity);
+	caerModuleSM(&caerOpticFlowFilterFunctions, moduleData, sizeof(struct OpticFlowFilter_state), 1, flow);
 }
 
 static bool caerOpticFlowFilterInit(caerModuleData moduleData) {
@@ -71,13 +70,16 @@ static void caerOpticFlowFilterRun(caerModuleData moduleData, size_t argsNumber,
 	UNUSED_ARGUMENT(argsNumber);
 
 	// Interpret variable arguments (same as above in main function).
-	caerPolarityEventPacket polarity = va_arg(args, caerPolarityEventPacket);
+	FlowEventPacket flow = va_arg(args, FlowEventPacket);
 
 	// Only process packets with content.
-	if (polarity == NULL) {
+	if (flow == NULL) {
 		return;
 	}
 
+	// Use the polarity event packet as the main workhorse
+	// The FlowEventPacket only encapsulates this packet with flow data
+	caerPolarityEventPacket polarity = flow->polarity;
 	OpticFlowFilterState state = moduleData->moduleState;
 
 	// If the map is not allocated yet, do it.
@@ -94,13 +96,16 @@ static void caerOpticFlowFilterRun(caerModuleData moduleData, size_t argsNumber,
 	// Iterate over events and filter out ones that are not supported by other
 	// events within a certain region in the specified timeframe.
 	CAER_POLARITY_ITERATOR_VALID_START(polarity)
-		struct flow_event e = flowEventInitFromPolarity(caerPolarityIteratorElement,polarity);
+		struct flow_event e = flowEventInitFromPolarity(caerPolarityIteratorElement, polarity);
 
 		// Compute optic flow using events in buffer
-		flowBenosman2014(&e,state->buffer,state->params);
+		flowBenosman2014(&e, state->buffer, state->params);
 
 		// Add event to buffer
 		flowEventBufferAdd(e,state->buffer);
+
+		// Update flow event packet
+		flowEventPacketUpdate(flow, &e, caerPolarityIteratorCounter);
 
 		// For now, count events in packet and output how many have flow
 		if (e.hasFlow) {
