@@ -11,8 +11,8 @@
 #include "flowEvent.h"
 
 typedef struct  {
-	int64_t dtMin;
-	int64_t dtMax;
+	int32_t dtMin;
+	int32_t dtMax;
 	uint16_t dx;
 	double thr1;
 	double thr2;

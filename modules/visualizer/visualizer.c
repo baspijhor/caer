@@ -297,8 +297,13 @@ void caerVisualizerUpdate(caerVisualizerState state, caerEventPacketHeader packe
 	else {
 		return;
 	}
-
-	caerEventPacketHeader packetHeaderCopy = caerCopyEventPacketOnlyEvents(packetHeader);
+	caerEventPacketHeader packetHeaderCopy ;
+	if (packetHeader->eventType == FLOW_EVENT_TYPE) {
+		packetHeaderCopy = copyFlowEventPacketOnlyEvents((FlowEventPacket) packetHeader);
+	}
+	else {
+		packetHeaderCopy = caerCopyEventPacketOnlyEvents(packetHeader);
+	}
 	if (packetHeaderCopy == NULL) {
 		if (caerEventPacketHeaderGetEventNumber(packetHeader) == 0) {
 			caerLog(CAER_LOG_NOTICE, state->parentModule->moduleSubSystemString,
@@ -757,6 +762,110 @@ static void caerVisualizerModuleRun(caerModuleData moduleData, size_t argsNumber
 	caerVisualizerUpdate(moduleData->moduleState, packetHeader);
 }
 
+/*
+//------------------------FLOW VISUALIZER ADDITIONS--------------------------------------------
+static bool caerVisualizerModuleInitFlow(caerModuleData moduleData, caerVisualizerRenderer renderer,
+	caerVisualizerEventHandler eventHandler, FlowEventPacket flow);
+
+static struct caer_module_functions caerVisualizerFunctionsFlow = { .moduleInit = NULL, .moduleRun =
+	&caerVisualizerModuleRunFlow, .moduleConfig = NULL, .moduleExit = &caerVisualizerModuleExit };
+
+void caerVisualizerFlow(uint16_t moduleID, const char *name, caerVisualizerRenderer renderer,
+	caerVisualizerEventHandler eventHandler, FlowEventPacket flow) {
+	caerEventPacketHeader packetHeader = (caerEventPacketHeader) flow->polarity;
+
+	// Concatenate name and 'Visualizer' prefix.
+	size_t nameLength = (name != NULL) ? (strlen(name)) : (0);
+	char visualizerName[10 + nameLength + 1]; // +1 for NUL termination.
+
+	memcpy(visualizerName, "Visualizer", 10);
+	if (name != NULL) {
+		memcpy(visualizerName + 10, name, nameLength);
+	}
+	visualizerName[10 + nameLength] = '\0';
+
+	caerModuleData moduleData = caerMainloopFindModule(moduleID, visualizerName);
+	if (moduleData == NULL) {
+		return;
+	}
+
+	caerModuleSM(&caerVisualizerFunctionsFlow, moduleData, 0, 3, renderer, eventHandler, packetHeader);
+}
+
+static bool caerVisualizerModuleInitFlow(caerModuleData moduleData, caerVisualizerRenderer renderer,
+	caerVisualizerEventHandler eventHandler, FlowEventPacket flow) {
+	// Get size information from source.
+	caerEventPacketHeader packetHeader = (caerEventPacketHeader) flow->polarity;
+	int16_t sourceID = caerEventPacketHeaderGetEventSource(packetHeader);
+
+	sshsNode sourceInfoNode = caerMainloopGetSourceInfo(U16T(sourceID));
+	if (sourceInfoNode == NULL) {
+		// This should never happen, but we handle it gracefully.
+		caerLog(CAER_LOG_ERROR, moduleData->moduleSubSystemString,
+			"Failed to get source info to setup visualizer resolution.");
+		return (false);
+	}
+
+	// Default sizes if nothing else is specified in sourceInfo node.
+	int16_t sizeX = 320;
+	int16_t sizeY = 240;
+
+	// Get sizes from sourceInfo node. visualizer prefix takes precedence,
+	// for APS and DVS images, alternative prefixes are provided, as well
+	// as for generic data visualization.
+	if (sshsNodeAttributeExists(sourceInfoNode, "visualizerSizeX", SHORT)) {
+		sizeX = sshsNodeGetShort(sourceInfoNode, "visualizerSizeX");
+		sizeY = sshsNodeGetShort(sourceInfoNode, "visualizerSizeY");
+	}
+	else if (sshsNodeAttributeExists(sourceInfoNode, "dvsSizeX", SHORT)
+		&& caerEventPacketHeaderGetEventType(packetHeader) == POLARITY_EVENT) {
+		sizeX = sshsNodeGetShort(sourceInfoNode, "dvsSizeX");
+		sizeY = sshsNodeGetShort(sourceInfoNode, "dvsSizeY");
+	}
+	else if (sshsNodeAttributeExists(sourceInfoNode, "apsSizeX", SHORT)
+		&& caerEventPacketHeaderGetEventType(packetHeader) == FRAME_EVENT) {
+		sizeX = sshsNodeGetShort(sourceInfoNode, "apsSizeX");
+		sizeY = sshsNodeGetShort(sourceInfoNode, "apsSizeY");
+	}
+	else if (sshsNodeAttributeExists(sourceInfoNode, "dataSizeX", SHORT)) {
+		sizeX = sshsNodeGetShort(sourceInfoNode, "dataSizeX");
+		sizeY = sshsNodeGetShort(sourceInfoNode, "dataSizeY");
+	}
+
+	moduleData->moduleState = caerVisualizerInit(renderer, eventHandler, sizeX, sizeY, VISUALIZER_DEFAULT_ZOOM, true,
+		moduleData);
+	if (moduleData->moduleState == NULL) {
+		return (false);
+	}
+
+	return (true);
+}
+
+static void caerVisualizerModuleRunFlow(caerModuleData moduleData, size_t argsNumber, va_list args) {
+	UNUSED_ARGUMENT(argsNumber);
+
+	caerVisualizerRenderer renderer = va_arg(args, caerVisualizerRenderer);
+	caerVisualizerEventHandler eventHandler = va_arg(args, caerVisualizerEventHandler);
+	FlowEventPacket flow = va_arg(args, FlowEventPacket);
+
+	// Without a packet, we cannot initialize or render anything.
+	if (flow == NULL) {
+		return;
+	}
+
+	// Initialize visualizer. Needs information from a packet (the source ID)!
+	if (moduleData->moduleState == NULL) {
+		if (!caerVisualizerModuleInitFlow(moduleData, renderer, eventHandler, flow)) {
+			return;
+		}
+	}
+
+	// Render given packet.
+	caerVisualizerUpdate(moduleData->moduleState, flow);
+}
+//--------------------------------------------------------------------------------------------
+*/
+
 bool caerVisualizerRendererPolarityEvents(caerVisualizerState state, caerEventPacketHeader polarityEventPacketHeader) {
 	UNUSED_ARGUMENT(state);
 
@@ -777,6 +886,56 @@ bool caerVisualizerRendererPolarityEvents(caerVisualizerState state, caerEventPa
 				caerPolarityEventGetY(caerPolarityIteratorElement), al_map_rgb(255, 0, 0));
 		}CAER_POLARITY_ITERATOR_VALID_END
 
+	return (true);
+}
+
+bool caerVisualizerRendererFlowEvents(caerVisualizerState state, caerEventPacketHeader flowEventPacketHeader) {
+	UNUSED_ARGUMENT(state);
+
+	FlowEventPacket flow = (FlowEventPacket) flowEventPacketHeader;
+
+	if (caerEventPacketHeaderGetEventValid(flowEventPacketHeader) == 0) {
+		return (false);
+	}
+
+	// Render all valid events.
+	for (int32_t i = 0; i < caerEventPacketHeaderGetEventNumber(flowEventPacketHeader); i++) {
+		caerPolarityEvent p = &(flow->events[i]);
+		if (!caerPolarityEventIsValid(p)) { continue; } // Skip invalid polarity events.
+		if (caerPolarityEventGetPolarity(p)) {
+			// ON polarity (green).
+			al_put_pixel(caerPolarityEventGetX(p),
+					caerPolarityEventGetY(p), al_map_rgb(0, 255, 0));
+		}
+		else {
+			// OFF polarity (red).
+			al_put_pixel(caerPolarityEventGetX(p),
+					caerPolarityEventGetY(p), al_map_rgb(255, 0, 0));
+		}
+//		if (flow->testSize == (size_t) flowEventPacketHeader->eventNumber) {
+			if (flow->hasFlow[i]) {
+				uint16_t x = caerPolarityEventGetX(p);
+				float x1 = (float) caerPolarityEventGetX(p);
+				float y1 = (float) caerPolarityEventGetY(p);
+				float x2 = x1 + (float) flow->u[i] * 10;
+				float y2 = y1 + (float) flow->v[i] * 10;
+				if (x2 < 0) {
+					x2 = 0;
+				}
+				if (x2 > (float) state->bitmapRendererSizeX) {
+					x2 = (float) state->bitmapRendererSizeX;
+				}
+				if (y2 < 0) {
+					y2 = 0;
+				}
+				if (y2 > (float) state->bitmapRendererSizeY) {
+					y2 = (float) state->bitmapRendererSizeY;
+				}
+
+				al_draw_line(x1,y1,x2,y2, al_map_rgb(255, 255, 255),1);
+			}
+		}
+//	}
 	return (true);
 }
 

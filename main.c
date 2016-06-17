@@ -164,6 +164,9 @@ static bool mainloop_1(void) {
 #ifdef ENABLE_OPTICFLOW
 	flow = flowEventPacketInitFromPolarity(polarity);
 	caerOpticFlowFilter(2, flow);
+	#ifdef ENABLE_VISUALIZER
+		caerVisualizer(59, "Flow", &caerVisualizerRendererFlowEvents, NULL, (caerEventPacketHeader) flow);
+	#endif
 	flowEventPacketFree(flow);
 #endif
 
@@ -173,7 +176,7 @@ static bool mainloop_1(void) {
 #endif
 
 	// A simple visualizer exists to show what the output looks like.
-#ifdef ENABLE_VISUALIZER
+#if defined(ENABLE_VISUALIZER) && !defined(ENABLE_OPTICFLOW)
 	caerVisualizer(60, "Polarity", &caerVisualizerRendererPolarityEvents, NULL, (caerEventPacketHeader) polarity);
 	caerVisualizer(61, "Frame", &caerVisualizerRendererFrameEvents, NULL, (caerEventPacketHeader) frame);
 	caerVisualizer(62, "IMU6", &caerVisualizerRendererIMU6Events, NULL, (caerEventPacketHeader) imu);

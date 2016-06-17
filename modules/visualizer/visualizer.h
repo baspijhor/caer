@@ -7,6 +7,8 @@
 #include <libcaer/events/frame.h>
 #include <libcaer/events/imu6.h>
 #include <libcaer/events/point2d.h>
+#include "modules/opticflow/flowEvent.h"
+
 #include <allegro5/allegro.h>
 
 #define VISUALIZER_DEFAULT_ZOOM 2.0f
@@ -27,10 +29,17 @@ bool caerVisualizerRendererPolarityEvents(caerVisualizerState state, caerEventPa
 bool caerVisualizerRendererFrameEvents(caerVisualizerState state, caerEventPacketHeader frameEventPacketHeader);
 bool caerVisualizerRendererIMU6Events(caerVisualizerState state, caerEventPacketHeader imu6EventPacketHeader);
 bool caerVisualizerRendererPoint2DEvents(caerVisualizerState state, caerEventPacketHeader point2DEventPacketHeader);
+bool caerVisualizerRendererFlowEvents(caerVisualizerState state, caerEventPacketHeader flowPacketHeader);
+
 
 void caerVisualizer(uint16_t moduleID, const char *name, caerVisualizerRenderer renderer,
 	caerVisualizerEventHandler eventHandler, caerEventPacketHeader packetHeader);
 
 void caerVisualizerSystemInit(void);
+
+/*bool caerVisualizerRendererFlowEvents(caerVisualizerState state, FlowEventPacket flowEventPacket);
+void caerVisualizerFlow(uint16_t moduleID, const char *name, caerVisualizerRenderer renderer,
+	caerVisualizerEventHandler eventHandler, FlowEventPacket packet);
+void caerVisualizerUpdateFlow(caerVisualizerState state, FlowEventPacket flowEventPacket);*/
 
 #endif /* VISUALIZER_H_ */
