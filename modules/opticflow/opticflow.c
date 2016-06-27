@@ -14,8 +14,14 @@
 #include "flowBenosman2014.h"
 #include "flowRegularizationFilter.h"
 
+#include <string.h>
+
 #define FLOW_BUFFER_SIZE 3
 #define DVS128_LOCAL_FLOW_TO_VENTRAL_FLOW 1e6/115.0
+#define DIFF_ON_MAX 4000000
+#define DIFF_ON_MIN 209996
+#define DIFF_OFF_MAX 132
+#define DIFF_OFF_MIN 2
 
 struct timespec timeInit;
 int64_t timeInitEvent = 0;
@@ -28,6 +34,7 @@ struct OpticFlowFilter_state {
 	bool enableFlowRegularization;
 	int64_t refractoryPeriod;
 	int8_t subSampleBy;
+	sshsNode DVS128Node;
 	double wx, wy;
 };
 
@@ -38,6 +45,7 @@ static void caerOpticFlowFilterRun(caerModuleData moduleData, size_t argsNumber,
 static void caerOpticFlowFilterConfig(caerModuleData moduleData);
 static void caerOpticFlowFilterExit(caerModuleData moduleData);
 static bool allocateBuffer(OpticFlowFilterState state, int16_t sourceID);
+static sshsNode obtainDVS128BiasNode(sshsNode thisNode);
 
 static struct caer_module_functions caerOpticFlowFilterFunctions = { .moduleInit =
 	&caerOpticFlowFilterInit, .moduleRun = &caerOpticFlowFilterRun, .moduleConfig =
@@ -92,6 +100,9 @@ static bool caerOpticFlowFilterInit(caerModuleData moduleData) {
 
 	// Add config listeners last, to avoid having them dangling if Init doesn't succeed.
 	sshsNodeAddAttributeListener(moduleData->moduleNode, moduleData, &caerModuleConfigDefaultListener);
+
+	// Identify link to DVS128 hardware for threshold regulation
+	state->DVS128Node = obtainDVS128BiasNode(moduleData->moduleNode);
 
 	// Nothing that can fail here.
 	return (true);
@@ -172,6 +183,34 @@ static void caerOpticFlowFilterRun(caerModuleData moduleData, size_t argsNumber,
 		}
 	}
 
+	// DELAY CONTROL THROUGH DVS THRESHOLD SETTINGS
+	if (state->DVS128Node != NULL) {
+		int32_t diffOn = sshsNodeGetInt(state->DVS128Node,"diffOn");
+		int32_t diffOff = sshsNodeGetInt(state->DVS128Node,"diffOff");
+		if (delay > 10) {
+			if (diffOn < DIFF_ON_MAX)
+				diffOn *= 2;
+			else
+				diffOn = DIFF_ON_MAX;
+			if (diffOff > DIFF_OFF_MIN)
+				diffOff /= 2;
+			else
+				diffOff = DIFF_OFF_MIN;
+		}
+		else {
+			if (diffOn > DIFF_ON_MIN)
+				diffOn /= 2;
+			else
+				diffOn = DIFF_ON_MIN;
+			if (diffOff < DIFF_OFF_MAX)
+				diffOff *= 2;
+			else
+				diffOff = DIFF_OFF_MAX;
+		}
+		sshsNodePutInt(state->DVS128Node,"diffOn",diffOn);
+		sshsNodePutInt(state->DVS128Node,"diffOff",diffOff);
+	}
+
 	fprintf(stdout, "\rwx: %1.3f. wy: %1.3f   . timeDelay: %ld ",
 			state->wx, state->wy, delay/1000);
 	fflush(stdout);
@@ -228,4 +267,26 @@ static bool allocateBuffer(OpticFlowFilterState state, int16_t sourceID) {
 
 	// TODO: size the map differently if subSampleBy is set!
 	return (true);
+}
+
+static sshsNode obtainDVS128BiasNode(sshsNode thisNode) {
+	sshsNode parent = sshsNodeGetParent(thisNode);
+	size_t numChildren = 1;
+	sshsNode* children = sshsNodeGetChildren(parent,&numChildren);
+	sshsNode DVS128Node = children[0];
+	if (DVS128Node == NULL
+			|| strstr(sshsNodeGetName(DVS128Node),"DVS128") == NULL) {
+		caerLog(CAER_LOG_ERROR,__func__,
+				"Node with name 'DVS128' not found.");
+		return NULL;
+	}
+	children = sshsNodeGetChildren(DVS128Node,&numChildren);
+	sshsNode biasNode = children[0];
+	if (biasNode == NULL
+			|| strstr(sshsNodeGetName(biasNode),"bias") == NULL) {
+		caerLog(CAER_LOG_ERROR,__func__,
+				"Node with name 'bias' not found.");
+		return NULL;
+	}
+	return (biasNode);
 }
