@@ -306,7 +306,7 @@ int uart_tx(int len, unsigned char *data)
 }
 int uart_rx(int len, unsigned char *data, int timeout_ms)
 {
-  int l = len;
+int l = len;
   ssize_t rread;
   struct termios options;
 
@@ -328,6 +328,10 @@ int uart_rx(int len, unsigned char *data, int timeout_ms)
   }
 
   return (l);
+}
+
+int uart_drain(void) {
+	return (tcdrain(serial_handle));
 }
 
 #endif

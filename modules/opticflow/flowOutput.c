@@ -187,6 +187,7 @@ static inline bool sendFlowEventUart(flowEvent e) {
 	int16_t v = (int16_t) (e->v*10);
 
 	// Send data over UART
+	uart_drain();
 	if (uart_tx(sizeof(x),(unsigned char*) &x)
 			|| uart_tx(sizeof(y),(unsigned char*) &y)
 			|| uart_tx(sizeof(t),(unsigned char*) &t)
