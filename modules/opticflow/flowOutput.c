@@ -257,20 +257,17 @@ static int outputHandlerThread(void *stateArg) {
 			break;
 	}
 
-	struct timespec sleepTime = { .tv_sec = 0, .tv_nsec = 500000 };
+	struct timespec sleepTime = { .tv_sec = 0, .tv_nsec = 400000 };
+	struct timespec sleepTime2 = { .tv_sec = 0, .tv_nsec = 100000 };
 
 	// Wait until the buffer is initialized
 	while (!atomic_load_explicit(&state->running, memory_order_relaxed)) {
 		thrd_sleep(&sleepTime, NULL);
 	}
-
 	// Main thread loop
 	while (atomic_load_explicit(&state->running, memory_order_relaxed)) {
 		flowEvent e = getFlowEventFromTransferBuffer(state->buffer);
-		if (e == NULL) { // no data: sleep for a while
-			thrd_sleep(&sleepTime, NULL);
-		}
-		else {
+		if (e != NULL) {
 			if (state->mode == OF_OUT_UART || state->mode == OF_OUT_BOTH) {
 				if (!sendFlowEventUart(e)) {
 					caerLog(CAER_LOG_ALERT, SUBSYSTEM_UART, "A flow event was not sent.");
@@ -283,6 +280,12 @@ static int outputHandlerThread(void *stateArg) {
 			}
 			free(e);
 		}
+		else {
+			thrd_sleep(&sleepTime, NULL);
+		}
+
+		// sleep for a while
+		thrd_sleep(&sleepTime2, NULL);
 	}
 
 	// If shutdown: empty buffer before closing thread
